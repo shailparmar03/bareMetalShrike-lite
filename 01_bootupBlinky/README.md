@@ -1,16 +1,19 @@
 ## 1. RP2040 Boot Up Process
 
-Let's consider the C code given below in the context of programming a Pi Pico development board.
+Let's consider the C code given below in the context of programming a Shrike-lite development board.
 ```C
 #include <stdint.h>
-#include <stdbool.h>
 
-// Define necessary register addresses
-#define RESETS_RESET *(uint32_t *) (0x4000c000)
-#define RESETS_RESET_DONE *(uint32_t *) (0x4000c008)
-#define IO_BANK0_GPIO25_CTRL *(uint32_t *) (0x400140cc)
-#define SIO_GPIO_OE_SET *(uint32_t *) (0xd0000024)
-#define SIO_GPIO_OUT_XOR *(uint32_t *) (0xd000001c)
+// RESETS
+#define RESETS_RESET        (*(uint32_t *)0x4000C000)
+#define RESETS_RESET_DONE   (*(uint32_t *)0x4000C008)
+
+// IO BANK0: GPIO 04
+#define IO_BANK0_GPIO04_CTRL (*(uint32_t *)0x40014024)
+
+// SIO
+#define SIO_GPIO_OE_SET     (*(uint32_t *)0xD0000024)
+#define SIO_GPIO_OUT_XOR    (*(uint32_t *)0xD000001C)
 
 // Main entry point
 void bootStage2(void)
@@ -19,23 +22,22 @@ void bootStage2(void)
     RESETS_RESET &= ~(1 << 5);
     while (!(RESETS_RESET_DONE & (1 << 5)));
 
-    // Set GPIO 25 function to SIO
-    IO_BANK0_GPIO25_CTRL = 5;
+    // Set GPIO 04 function to SIO
+    IO_BANK0_GPIO04_CTRL = 5;
 
-    // Set output enable for GPIO 25 in SIO
-    SIO_GPIO_OE_SET |= 1 << 25;
+    // Set output enable for GPIO 04 in SIO
+    SIO_GPIO_OE_SET |= 1 << 4;
 
-    while (true)
-    {
+    for ( ;; ) {
         // Wait for some time
         for (uint32_t i = 0; i < 100000; ++i);
 
-        // Flip output for GPIO 25
-        SIO_GPIO_OUT_XOR |= 1 << 25;
+        // Flip output for GPIO 04
+        SIO_GPIO_OUT_XOR |= 1 << 4;
     }
 }
 ```
-This code is trying to blink the LED attached with GPIO25 on Pi Pico. Your first assignment is to read up on the sections from the [RP2040 datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf) in which the registers used in this code are defined.
+This code is trying to blink the LED attached with GPIO04 on Shrike-lite. Your first assignment is to read up on the sections from the [RP2040 datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf) in which the registers used in this code are defined.
 
 ### The Two Stage Booting Process
 Even though this code may look relatively small and simple, getting it to run on RP2040 requires much more than just this code. Opposite to what was discussed for Arm<sup>&copy;</sup> &micro;C boot up process on the [main page](../README.md), RP2040 goes through a Two-Stage booting process. A very good resource on this booting process is [V. Hunter Adams's](https://vanhunteradams.com/) discussion on the [topic](https://vanhunteradams.com/Pico/Bootloader/Boot_sequence.html), which is also used to write next couple of paragraphs.
@@ -71,7 +73,7 @@ Following is the description of this command
 - `-c` asks the compiler to just compile the code but not link it, more on linking later.
 - `-o boot2Blinky_temp.o` specifies the output file where the compiled code will go.
 
-Check the size of `boot2Blinky_temp.o` file. It would be around 900 Bytes. This is much more than 256 Bytes that we are aiming for. However, a code compiled this way (it is in ELF binary format) contains much more information than just the instructions and data. We can generate the *Object Dump* of this file to extract all the information from `boot2Blinky_temp.o` file in human readable format,
+Check the size of `boot2Blinky_temp.o` file. It would be around 852 Bytes. This is much more than 256 Bytes that we are aiming for. However, a code compiled this way (it is in ELF binary format) contains much more information than just the instructions and data. We can generate the *Object Dump* of this file to extract all the information from `boot2Blinky_temp.o` file in human readable format,
 ```bash
 $ arm-none-eabi-objdump -hSD boot2Blinky_temp.o > boot2Blinky_temp.objdump
 ```
@@ -81,22 +83,22 @@ boot2Blinky_temp.o:     file format elf32-littlearm
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
-  0 .text         00000060  00000000  00000000  00000034  2**2
+  0 .text         0000006c  00000000  00000000  00000034  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .data         00000000  00000000  00000000  00000094  2**0
+  1 .data         00000000  00000000  00000000  000000a0  2**0
                   CONTENTS, ALLOC, LOAD, DATA
-  2 .bss          00000000  00000000  00000000  00000094  2**0
+  2 .bss          00000000  00000000  00000000  000000a0  2**0
                   ALLOC
-  3 .comment      00000034  00000000  00000000  00000094  2**0
+  3 .comment      0000001f  00000000  00000000  000000a0  2**0
                   CONTENTS, READONLY
-  4 .ARM.attributes 0000002c  00000000  00000000  000000c8  2**0
+  4 .ARM.attributes 0000002c  00000000  00000000  000000bf  2**0
                   CONTENTS, READONLY
 
 Disassembly of section .text:
 
 00000000 <bootStage2>:
-   0:	b580      	push	{r7, lr}
-   2:	b082      	sub	sp, #8
+   0:   b580            push    {r7, lr}
+   2:   b082            sub     sp, #8
    ...
 ```
 Note that the first major piece of information the `boot2Blinky_temp.objdump` file contains is a table listing different sections and their attributes like size, VML, LMA, etc. The important sections for us right now are
@@ -105,7 +107,7 @@ Note that the first major piece of information the `boot2Blinky_temp.objdump` fi
 - `.data` - Contains the data or variable values.
 - `.bss` - Define the data that needs to be initialized to zero.
 
-For our case, only the `.text` section has non-zero size, which is `0x00000060`, meaning that the actual program is 96 Bytes in size.
+For our case, only the `.text` section has non-zero size, which is `0x0000006c`, meaning that the actual program is 108 Bytes in size.
 
 However, note that VMA(virtual memory address)/LMA(load memory address) for all the sections are set to 0. Meaning, `boot2Blinky_temp.o` is not yet a complete firmware, because it does not contain the information where those sections should be loaded in the address map. A linker needs to be used to produce a full firmware from `boot2Blinky_temp.o`.
 
@@ -118,7 +120,7 @@ ENTRY(bootStage2);
 
 MEMORY
 {
-    flash(rx) : ORIGIN = 0x10000000, LENGTH = 2048k
+    flash(rx) : ORIGIN = 0x10000000, LENGTH = 4096k
     sram(rwx) : ORIGIN = 0x20000000, LENGTH = 256k
 }
 
@@ -162,11 +164,11 @@ boot2Blinky_temp.elf:     file format elf32-littlearm
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
-  0 .text         00000060  10000000  10000000  00010000  2**2
+  0 .text         0000006c  10000000  10000000  00001000  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .comment      00000033  00000000  00000000  00010060  2**0
+  1 .comment      0000001e  00000000  00000000  0000106c  2**0
                   CONTENTS, READONLY
-  2 .ARM.attributes 0000002c  00000000  00000000  00010093  2**0
+  2 .ARM.attributes 0000002c  00000000  00000000  0000108a  2**0
                   CONTENTS, READONLY
 
 Disassembly of section .text:
@@ -181,14 +183,14 @@ A binary file can also be generated now which would represent the raw program th
 ```bash
 $ arm-none-eabi-objcopy -O binary boot2Blinky_temp.elf boot2Blinky_temp.bin
 ```
-If you check the size of `boot2Blinky_temp.bin` file, you'd see that it is exactly 96 Bytes in size, the size of the `.text` section. Now this is something that should go into the Flash. You can also open this file using any [Binary File Viewer](https://hexed.it/) and make sure that its content match with the Disassembly of `.text` section you may find (2nd Column) in the Object Dump.
+If you check the size of `boot2Blinky_temp.bin` file, you'd see that it is exactly 108 Bytes in size, the size of the `.text` section. Now this is something that should go into the Flash. You can also open this file using any [Binary File Viewer](https://hexed.it/) and make sure that its content match with the Disassembly of `.text` section you may find (2nd Column) in the Object Dump.
 
 However, what happened to placing the `.text` section at the start of the Flash? That information seems to have been lost in going from ELF format to binary format. This problem is solved by the UF2 file format that is discussed in a later section.
 
 ### Making the Program Valid
-As discussed previously, if the `BOOTSEL` button is not pressed then the &micro;C will load the first 256 Bytes of Flash into SRAM and start executing it after checking its validity. Since the binary generated so far is only 96 Bytes, it can easily be executed if the Pi Pico thinks it is valid.
+As discussed previously, if the `BOOTSEL` button is not pressed then the &micro;C will load the first 256 Bytes of Flash into SRAM and start executing it after checking its validity. Since the binary generated so far is only 108 Bytes, it can easily be executed if the Shrike-lite thinks it is valid.
 
-To check the validity, the code in `bootrom` computes a CRC32 checksum of the first 252 Bytes and compares it with the last 4 Bytes of the 256 Bytes it has loaded from Flash to SRAM. If the computed CRC32 checksum matches with the last 4 Bytes, then the 252 Bytes are assumed to be a valid code and it starts executing from the top. Hence the goal in this section is to somehow convert the 96 Bytes binary into a 256 Bytes one and make sure that the last 4 Bytes contain a CRC32 checksum of the first 252 Bytes.
+To check the validity, the code in `bootrom` computes a CRC32 checksum of the first 252 Bytes and compares it with the last 4 Bytes of the 256 Bytes it has loaded from Flash to SRAM. If the computed CRC32 checksum matches with the last 4 Bytes, then the 252 Bytes are assumed to be a valid code and it starts executing from the top. Hence the goal in this section is to somehow convert the 108 Bytes binary into a 256 Bytes one and make sure that the last 4 Bytes contain a CRC32 checksum of the first 252 Bytes.
 
 Calculation of CRC32 checksum is a big topic in itself and is not in the scope of this guide. To avoid going into too much detail, an open-source CRC calculation library called [CRCpp](https://github.com/d-bahr/CRCpp) is used here. Consider the [compCrc32.cpp](./compCrc32.cpp) file. You'll see that majority of the code here loads the contents of the binary file into a 252 Bytes long array, which is zero-initialized. After that, at line 57, the CRC32 checksum is calculated using the library discussed previously.
 ```C++
@@ -200,7 +202,7 @@ Note the use of `CRC_32_MPEG2()` in the code above. There exists multiple parame
 
 Finally, the 4 Bytes of CRC checksum is output into a `crc.c` file. For this specific case, the resulting `crc.c` fill should contain the following,
 ```C {.numberLines}
-__attribute__((section(".crc"))) unsigned char crc[4] = {0xc0, 0x8d, 0x02, 0x6c};
+__attribute__((section(".crc"))) unsigned char crc[4] = {0x43, 0x18, 0xc7, 0x48};
 ```
 Note that the array definition in `crc.c` file contains `__attribute__((section(".crc")))`. This is a directive to the compiler telling it to place the `crc` array in a separate section called `.crc`. This allows us to control where this data will be placed in the Flash with the help of the Linker Script.
 
@@ -225,7 +227,7 @@ ENTRY(bootStage2);
 
 MEMORY
 {
-    flash(rx) : ORIGIN = 0x10000000, LENGTH = 2048k
+    flash(rx) : ORIGIN = 0x10000000, LENGTH = 4096k
     sram(rwx) : ORIGIN = 0x20000000, LENGTH = 256k
 }
 
@@ -255,27 +257,27 @@ boot2Blinky.elf:     file format elf32-littlearm
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
-  0 .text         00000100  10000000  10000000  00010000  2**2
+  0 .text         00000100  10000000  10000000  00001000  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .comment      00000033  00000000  00000000  00010100  2**0
+  1 .comment      0000001e  00000000  00000000  00001100  2**0
                   CONTENTS, READONLY
-  2 .ARM.attributes 0000002c  00000000  00000000  00010133  2**0
+  2 .ARM.attributes 0000002c  00000000  00000000  0000111e  2**0
                   CONTENTS, READONLY
 
 Disassembly of section .text:
 
 10000000 <bootStage2>:
-10000000:	b580      	push	{r7, lr}
-10000002:	b082      	sub	sp, #8
+10000000:       b580            push    {r7, lr}
+10000002:       b082            sub     sp, #8
 
 ...
 
 100000fc <crc>:
-100000fc:	6c028dc0 	stcvs	13, cr8, [r2], {192}	; 0xc0
+100000fc:       48c71843        stmiami r7, {r0, r1, r6, fp, ip}^
 ```
 we see that the first section in the ELF header is now `.text` with size `0x00000100`, which is exactly 256 Bytes, and has VMA/LMA of `0x10000000` which is still the start of the Flash. Also note that the size of the `boot2Blinky.bin` file is 256 Bytes. You will also notice the CRC32 checksum defined at address `0x100000fc` in the disassembly provided later in the file.
 
-Now we have a valid program that can be executed by the &micro;C. But wait, how will this binary be loaded into the Flash of Pi Pico? This is where one more level of complexity exists.
+Now we have a valid program that can be executed by the &micro;C. But wait, how will this binary be loaded into the Flash of Shrike-lite? This is where one more level of complexity exists.
 
 ### The UF2 File Format
 UF2 (USB Flashing Format) is designed by Microsoft to be suitable for flashing &micro;C over MSC (Mass Storage Class; aka removable flash drive). Thus, to make the programmer's life easier, the `bootrom` of RP2040 is designed to be able to read a UF2 file in USB Mass Storage mode, and transfer the program into the Flash attached externally to the RP2040. However, to even be able to send the program to the &micro;C, the binary file needs to be converted into a UF2 file. Fortunately, Microsoft's [uf2](https://github.com/microsoft/uf2) contains utilities that allow us to do this pretty quickly.
@@ -297,7 +299,7 @@ Following is the description of this command
 
 Done, finally! :relieved:
 
-Now you have a `boot2Blinky.uf2` that you can upload to a Pi Pico and see the fruits of your labor.
+Now you have a `boot2Blinky.uf2` that you can upload to a Shrike-lite and see the fruits of your labor.
 
 ### Clean Up the Mess
 Going through everything discussed so far, you must have generated many files and have typed a good amount of commands in the terminal. The GNU Make utility can be used to keep the folder containing the code clean and automate the build process.
