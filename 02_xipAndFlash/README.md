@@ -1,5 +1,5 @@
 ## 2. Execute Code from Flash 
-In the last chapter, you learned the boot-up process of RP2040 &micro;C. In summary, the process is relatively simple, the `bootrom` verifies that the first 256 Bytes in Flash is valid, loads it into RAM and start executing it. But, the RP2040 can work with any Flash chip that can communicate over SPI protocol and is smaller than 16 MBytes in size. The development board used in these tutorials (Pi Pico) has 2 MBytes of Flash. It also means that it should be able to execute a program that is larger than 256 Bytes.
+In the last chapter, you learned the boot-up process of RP2040 &micro;C. In summary, the process is relatively simple, the `bootrom` verifies that the first 256 Bytes in Flash is valid, loads it into RAM and start executing it. But, the RP2040 can work with any Flash chip that can communicate over SPI protocol and is smaller than 16 MBytes in size. The development board used in these tutorials (Shrike-lite) has 4 MBytes of Flash. It also means that it should be able to execute a program that is larger than 256 Bytes.
 
 RP2040 contains XIP (Execute-In-Place) peripheral to allow processor to fetch instructions directly from Flash. The idea is simple, convert the read accesses requests from the processor into SPI commands. Thus, XIP acts as a Bus-To-SPI translation layer between the RP2040's processor and a Flash that can communicate over SPI. The goal of this chapter is to setup XIP such that the code can be executed directly from Flash. In fact, the 256 Bytes code that is loaded to RAM by `bootrom` and executed, is technically supposed to configure XIP, this is by design.
 
@@ -9,7 +9,7 @@ Let's first brush-up on Serial Peripheral Interface (SPI) before discussing its 
 SPI was originally developed by Motorola in 1980s. It is used heavily in today's time for communication between two &micro;Cs, a &micro;C and sensor/s or actuator/s. There are may flavors of SPI as well, like Microwire (developed by National Semiconductor) and Synchronous Serial Protocol (developed by Texas Instruments). Motorola's version of SPI is discussed here.
 
 Following image shows the connections between a &micro;C and a sensor that can communicate through SPI protocol.
-![image](../misc/figs/chap2/connectPicoSPI.svg)
+![image](../misc/figs/chap2/connectShrikeSPI.svg)
 
 The important pin names are,
 1. `CSn` - Active low chip-select or slave-select, AKA: `CS`, `/SS`, <code><span style="text-decoration:overline">CS</span></code>, `SSn`.
@@ -27,10 +27,10 @@ Following diagram shows a common data read message.
 
 You might have achieved something similar to what is shown in the diagrams above if you have worked with a sensor before that communicates over SPI protocol. Our goal here is to use faster variants of SPI protocol so that the processor can fetch the instructions from the Flash chip available onboard. Following reading material about XIP, SSI and Flash will be helpful in upcoming sections.
 - [RP2040 Datasheet, Section 4.10 SSI](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=572)
-- [W25Q80DV Flash Datasheet, Chapters 6-8](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=11)
+- [W25Q80DV Flash Datasheet, Chapters 6-8](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=12)
 
 ### Let's Start Slow
-Reading the Flash datasheet, you'll very quickly learn, in Chapter 6, that it can work with three variants of SPI; Standard SPI, Dual-SPI and Quad-SPI; in modes 0 and 3. Let's stick to Standard SPI in mode 0 for now. It also contains registers like `CONTROL` and `STATUS` that would require special attention. With the goal of reading the instructions from Flash in mind, you'd soon realize that you just have to make the &micro;C spit out the [*Read Data* (`0x3`)](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=26) instruction along with the appropriate address and the Flash will return the program instructions stored at that address. Following diagram shows the SPI message associated with such an interaction.
+Reading the Flash datasheet, you'll very quickly learn, in Chapter 6, that it can work with three variants of SPI; Standard SPI, Dual-SPI and Quad-SPI; in modes 0 and 3. Let's stick to Standard SPI in mode 0 for now. It also contains registers like `CONTROL` and `STATUS` that would require special attention. With the goal of reading the instructions from Flash in mind, you'd soon realize that you just have to make the &micro;C spit out the [*Read Data* (`0x3`)](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=29) instruction along with the appropriate address and the Flash will return the program instructions stored at that address. Following diagram shows the SPI message associated with such an interaction.
 ![image](../misc/figs/chap2/flashReadData.svg)
 
 Unfortunately, the discussion in RP2040's Datasheet is not that easy to follow. Regardless, on the &micro;C's side, you'd notice that almost every important aspect of this communication is handled by three registers,
@@ -38,9 +38,9 @@ Unfortunately, the discussion in RP2040's Datasheet is not that easy to follow. 
 2. [Baud rate (`BAUDR`)](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=604)
 3. [SPI control (`SPI_CTRLR0`)](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=609)
 
-The discussion of `BAUDR`'s value is provided in [Section 4.10.4 of RP2040 Datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=575). It mentions that the frequency of the SPI CLK signal is the function of $`f_{ssi\_clk}`$ and the 16-bit value (`SCKDV`) in `BAUDR` register. Also note that only an even value in range (0, 65534] is allowed. Thus, the `BAUDR` register's value can be figured out if the desired SPI CLK frequency is known. This information is available in [Section 9.6 of Flash Datasheet](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=59). It states that the maximum SPI clock frequency is 33 MHz for Read Data Instruction (0x3). Thus, the `SCKDV` value in `BAUDR` register is,
+The discussion of `BAUDR`'s value is provided in [Section 4.10.4 of RP2040 Datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=575). It mentions that the frequency of the SPI CLK signal is the function of $`f_{ssi\_clk}`$ and the 16-bit value (`SCKDV`) in `BAUDR` register. Also note that only an even value in range (0, 65534] is allowed. Thus, the `BAUDR` register's value can be figured out if the desired SPI CLK frequency is known. This information is available in [Section 9.6 of Flash Datasheet](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=64). It states that the maximum SPI clock frequency is 50 MHz for Read Data Instruction (0x3). Thus, the `SCKDV` value in `BAUDR` register is,
 ```math
-\texttt{SCKDV} = \frac{f_{ssi\_clk}}{f_{sclk\_out}} = \frac{125 MHz}{33 MHz} = 3.7878 \approx 4 \qquad \because f_{ssi\_clk} = f_{clk\_sys}
+\texttt{SCKDV} = \frac{f_{ssi\_clk}}{f_{sclk\_out}} = \frac{125 MHz}{50 MHz} = 2.5 \approx 3 \qquad \because f_{ssi\_clk} = f_{clk\_sys}
 ```
 
 Let's look at different bits of `CTRLR0` and figure out what should go in each,
@@ -124,7 +124,7 @@ __attribute__((section(".boot2"))) void bootStage2(void)
 ```
 Note that Section 2 of the code above first disables SSI peripheral, changes register values to what was discussed in [previous section](#lets-start-slow) and enables SSI peripheral. This concludes the setup of XIP peripheral. Now the processor should be able to fetch instructions directly from Flash.
 
-Section 3 of the code above is calling the `main` function defined in `flashBlinky.c` file. To do this, the address of `main` function (`0x10000101`) is converted into a function pointer (`(void (*)())`) and then the `main` function is actually called. The address of the `main` function is known precisely to be `0x10000100` since it will be placed right after the `.crc` section, with the help of the Linker Script. The difference of `0x1` in the address tells the processor to interpret the instructions as [Thumb and not Arm](https://stackoverflow.com/questions/28669905/what-is-the-difference-between-the-arm-thumb-and-thumb-2-instruction-encodings).
+Section 3 of the code above is calling the `main` function defined in `flashBlinky.c` file. To do this, the address of `main` function (`0x10000101`) is converted into a function pointer (`(void (*)())`) and then the `main` function is actually called. The address of the `main` function is known precisely to be `0x10000100` since it will be placed right after the `.crc` section, with the help of the Linker Script. The difference of `0x1` in the address tells the processor to [interpret](https://developer.arm.com/documentation/ka002971/latest/) the instructions as [Thumb and not Arm](https://stackoverflow.com/questions/28669905/what-is-the-difference-between-the-arm-thumb-and-thumb-2-instruction-encodings).
 
 Make following changes to the linker script to put `main` function right after `.crc` section in the binary.
 ```ld {.numberLines}
@@ -132,7 +132,7 @@ ENTRY(bootStage2);
 
 MEMORY
 {
-    flash(rx) : ORIGIN = 0x10000000, LENGTH = 2048k
+    flash(rx) : ORIGIN = 0x10000000, LENGTH = 4096k
     sram(rwx) : ORIGIN = 0x20000000, LENGTH = 256k
 }
 
@@ -161,7 +161,7 @@ The only major change here compared to last tutorial is that the first 256 Bytes
 Now you should be able to generate a `*.uf2` file, upload it on the &micro;C and see the LED flashing, which is handled by the `main` function that was never loaded into RAM.
 
 ### Switching Gears
-Hold on, the eventual goal of this tutorial was to use faster variants of SPI protocol right!? So, let's give Quad-SPI a shot. The high speed read instructions mentioned in [Flash documentation](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=20) are [Fast Read Quad Output (`0x6B`)](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=29) and [Fast Read Quad IO (`0xEB`)](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=31). But to make use of these instructions, the Flash needs to be put into Quad-SPI mode by setting Quad Enable (QE) bit in [Status Register 2](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=15). And, the [Write Status Register (`0x01`)](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=25) has to be used to change the value of a status register, along with [Write Enable (`0x06`)](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=22) and [Write Disable (`0x04`)](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf#page=23) instructions.
+Hold on, the eventual goal of this tutorial was to use faster variants of SPI protocol right!? So, let's give Quad-SPI a shot. The high speed read instructions mentioned in [Flash documentation](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=24) are [Fast Read Quad Output (`0x6B`)](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=32) and [Fast Read Quad IO (`0xEB`)](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=34). But to make use of these instructions, the Flash needs to be put into Quad-SPI mode by setting Quad Enable (QE) bit in [Status Register 2](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=17). And, the [Write Status Register (`0x01`)](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=27) has to be used to change the value of a status register, along with [Write Enable (`0x06`)](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=25) and [Write Disable (`0x04`)](https://www.mouser.com/datasheet/2/949/w25q32jv_revg_03272018_plus-1489806.pdf#page=26) instructions.
 
 There are two registers on the &micro;C, [Status Register (`SR`)](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=602) and [Data Register (`DR0`)](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=605), that will aid in putting the Flash into Quad-SPI mode. Two bits of the Status Register, BUSY (0th-bit) and TFE (2nd-bit), indicate whether the SSI is busy and whether the data was transmitted or not. The Data register, in reality, writes or reads data, to or from, transmit or receive FIFOs of SSI, when the register is written to or read from. Consider the following piece of code that makes use of these two registers to put the Flash into Quad-SPI mode,
 ```C
@@ -218,14 +218,12 @@ Note that Section 2 of the code above makes SSI to expect 8-bit data frame for n
 
 But wait, what is Quad-SPI mode? Let's first take a look at the real connection diagram between RP2040 and W25Q80DV Flash chip before answering this question.
 
-![img](../misc/figs/chap2/connectPicoFlash.svg)
+![img](../misc/figs/chap2/connectShrikeFlash.svg)
 
 Note that instead of the standard four connections, `CSn`, `SCK`, `TX` and `RX`, between the &micro;C and the Flash, there are actually six connections. Furthermore, the data lines on the &micro;C side is now labelled as `SD0`, `SD1`, `SD2` and `SD3` instead of `TX` and `RX`. This defines the Quad-SPI mode, where the data is communicated over four data lines. When the Flash is put into Quad-SPI mode, the `RX`, `TX`, `WPn` and `HOLDn` pins are repurposed to work as `SD0`, `SD1`, `SD2` and `SD3`. Following diagram shows the Quad-SPI format message associated with Fast Read Quad Output (`0x6B`) instruction.
 
 ![img](../misc/figs/chap2/flashReadQuadOut.svg)
 
-Let's do a quick comparison of speed between standard SPI and Quad-SPI reads.
-- Clock Cycles for Read Data (`0x03`) Instruction
   - 8 Cycles for Instruction
   - 24 Cycles for Address
   - 32 Cycles for Data
@@ -248,7 +246,7 @@ Note that compared to Read Data (`0x03`) Instruction, here the SSI is set to use
 ### Full Speed Ahead
 Even though Fast Read Quad Output (`0x6B`) Instruction works, it is not the fastest. Fast Read Quad IO (`0xEB`) Instruction works in a slightly different way, and is significantly faster. First difference that makes this instruction faster is the ability to send the address in parallel over the four data lanes. However, the address now has to be appended with 8 Mode Bits. Thus, the 32 Bits (24 Bit address + 8 Mode Bits) can now be sent in only 8 clock cycles. This instruction also requires only 4 dummy cycles instead of 8. And, finally, if the instruction being used every time is the same, then the Mode bits can be set to `0xA0`, thus eliminating the need of sending the 8-bit instruction completely after the first message.
 > [!NOTE]
-> Surprisingly, this value of the Mode Bits `0xA0` and its effect is not discussed anywhere in [Flash's Datasheet](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf). Though, this instruction is used by Pico SDK's [second stage boot code](https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2040/boot_stage2/boot2_w25q080.S).
+> Surprisingly, this value of the Mode Bits `0xA0` and its effect is not discussed anywhere in [Flash's Datasheet](https://www.winbond.com/resource-files/w25q80dv%20dl_revh_10022015.pdf) (w25q80dv for now). Though, this instruction is used by Pico SDK's [second stage boot code](https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2040/boot_stage2/boot2_w25q080.S).
 
 Following diagram shows the worst case data read process using this instruction.
 ![img](../misc/figs/chap2/flashReadQuadIO.svg)
