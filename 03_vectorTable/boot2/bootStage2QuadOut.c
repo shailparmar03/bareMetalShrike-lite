@@ -32,7 +32,7 @@ __attribute__((section(".boot2"))) void bootStage2(void)
     // 2. Setup SSI interface
     //  - Read 2 byte status register
     SSI_SSIENR = 0; // Disable SSI to configure it
-    SSI_BAUDR = 4; // Set clock divider to 4
+    SSI_BAUDR = 3; // Set clock divider to 3
     SSI_CTRLR0 = (7 << 16); // Set 8 clocks per data frame
     SSI_SSIENR = 1; // Enable SSI
     SSI_DR0 = 0x05; // Read Status Register 1

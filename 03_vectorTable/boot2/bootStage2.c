@@ -29,7 +29,7 @@ __attribute__((naked, noreturn, section(".boot2"))) void bootStage2(void)
 
     // 2. Setup SSI interface
     SSI_SSIENR = 0; // Disable SSI to configure it
-    SSI_BAUDR = 4; // Set clock divider to 4
+    SSI_BAUDR = 3; // Set clock divider to 3
     SSI_CTRLR0 = (3 << 8) | (31 << 16); // Set EEPROM mode and 32 clocks per data frame
     SSI_SPI_CTRLR0 = (6 << 2) | (2 << 8) | (0x03 << 24); // Set address length to 24-bits, instruction length to 8-bits and command to Read Data (03h)
     SSI_SSIENR = 1; // Enable SSI

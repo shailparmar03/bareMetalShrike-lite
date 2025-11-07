@@ -123,24 +123,35 @@ const vectFunc vector[48] __attribute__((section(".vector"))) =
 ```
 All the entries in a vector table, except the initial stack pointer, is a pointer to a function with `void <functionName>(void)` signature. Thus, it makes sense to declare the vector table as an array of `vectFunc` type (`void (*vectFunc) (void)`) elements. The array defined in the code above has 48 entries, where the first 16 entries are for the exceptions supported by [ARMv6-M architecture](https://cdn.hackaday.io/files/1770827576276288/DDI0419E_armv6m_arm.pdf#page=191) and next 32 entries are external exceptions from different [peripherals](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#page=61). All the exceptions that are `Reserved` are assigned `0`. Also, note that the first entry of the vector table, `_sstack` (the initial stack pointer), is type casted to `vectFunc` type since the linker script will declare it as a 32-bit value. The `defaultHandler` function declared above acts as a default interrupt function for all exception. Most of the time, it is nothing but an infinite `while` loop, hence `__attribute__((noreturn))`. The definition of the `defaultHandler` used here is provided below.
 ```C
-// Define necessary register addresses
-#define RESETS_RESET                                    *(volatile uint32_t *) (0x4000c000)
-#define RESETS_RESET_DONE                               *(volatile uint32_t *) (0x4000c008)
-#define IO_BANK0_GPIO25_CTRL                            *(volatile uint32_t *) (0x400140cc)
-#define SIO_GPIO_OE_SET                                 *(volatile uint32_t *) (0xd0000024)
-#define SIO_GPIO_OUT_XOR                                *(volatile uint32_t *) (0xd000001c)
+// RESETS
+#define RESETS_RESET        (*(volatile uint32_t *)0x4000C000)
+#define RESETS_RESET_DONE   (*(volatile uint32_t *)0x4000C008)
+
+// IO BANK0: GPIO 04
+#define IO_BANK0_GPIO04_CTRL (*(volatile uint32_t *)0x40014024)
+
+// SIO
+#define SIO_GPIO_OE_SET     (*(volatile uint32_t *)0xD0000024)
+#define SIO_GPIO_OUT_XOR    (*(volatile uint32_t *)0xD000001C)
 
 void defaultHandler()
 {
-    RESETS_RESET &= ~(1 << 5); // Bring IO_BANK0 out of reset state
-    while (!(RESETS_RESET_DONE & (1 << 5))); // Wait for peripheral to respond
-    IO_BANK0_GPIO25_CTRL = 5; // Set GPIO 25 function to SIO
-    SIO_GPIO_OE_SET |= 1 << 25; // Set output enable for GPIO 25 in SIO
+    // Bring IO_BANK0 out of reset state
+    RESETS_RESET &= ~(1 << 5);
+    while (!(RESETS_RESET_DONE & (1 << 5)));
 
-    while (true)
-    {
-        for (uint32_t i = 0; i < 10000; ++i); // Wait for some time
-        SIO_GPIO_OUT_XOR |= 1 << 25; // Flip output for GPIO 25
+    // Set GPIO 04 function to SIO
+    IO_BANK0_GPIO04_CTRL = 5;
+
+    // Set output enable for GPIO 04 in SIO
+    SIO_GPIO_OE_SET |= 1 << 4;
+
+    for ( ;; ) {
+        // Wait for some time
+        for (uint32_t i = 0; i < 10000; ++i);
+
+        // Flip output for GPIO 04
+        SIO_GPIO_OUT_XOR |= 1 << 4;
     }
 }
 ```
@@ -168,7 +179,7 @@ ENTRY(bootStage2);
 
 MEMORY
 {
-    flash(rx) : ORIGIN = 0x10000000, LENGTH = 2048k
+    flash(rx) : ORIGIN = 0x10000000, LENGTH = 4096k
     sram(rwx) : ORIGIN = 0x20000000, LENGTH = 256k
 }
 
